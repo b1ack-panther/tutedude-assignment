@@ -84,8 +84,8 @@ export function useDetection(
 			try {
 				// face detection
 				const faces = await faceModelRef.current?.estimateFaces(videoEl, false);
-				const facesCount = faces?.length || 0;
-
+				const facesCount =
+					faces.filter((face) => face.probability[0] > 0.8)?.length || 0;
 				// looking away detection
 				let lookingAway = false;
 				if (facesCount === 1 && landmarksModelRef.current) {
@@ -142,7 +142,7 @@ export function useDetection(
 			} catch (err: any) {
 				console.error("Detection failed:", err.message);
 			}
-		}, 100); // runs every 100ms (~10fps)
+		}, 500); // runs every 100ms (~10fps)
 
 		return () => clearInterval(intervalId);
 	}, [isActive, videoRef, result.isModelsLoading]);

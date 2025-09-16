@@ -7,6 +7,7 @@ import { useProctoring } from "@/hooks/useProctoring";
 import { DetectionEvent } from "@/types/proctoring";
 import { Camera, CameraOff, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { useDetection } from "@/hooks/use-detection";
+import { createMediaRecorderController } from "@/lib/utils";
 
 interface VideoProctoringProps {
 	candidateName: string;
@@ -18,11 +19,10 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
 	onReportGenerated,
 }) => {
 	const videoRef = useRef<HTMLVideoElement>(null);
-	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const streamRef = useRef<MediaStream | null>(null);
-	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-	const recordedChunksRef = useRef<Blob[]>([]);
-	const recordingUrlRef = useRef<string | null>(null);
+	const recorderControllerRef = useRef<ReturnType<
+		typeof createMediaRecorderController
+	> | null>(null);
 
 	const [recentAlert, setRecentAlert] = useState<DetectionEvent | null>(null);
 	const [permissionDenied, setPermissionDenied] = useState(false);
@@ -61,33 +61,8 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
 				streamRef.current = stream;
 				setIsRecording(true);
 				setPermissionDenied(false);
-
-				// Prepare MediaRecorder for recording playback
-				try {
-					const mimeType = MediaRecorder.isTypeSupported(
-						"video/webm;codecs=vp8,opus"
-					)
-						? "video/webm;codecs=vp8,opus"
-						: MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-						? "video/webm;codecs=vp9,opus"
-						: "video/webm";
-					mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
-					recordedChunksRef.current = [];
-					mediaRecorderRef.current.ondataavailable = (e: BlobEvent) => {
-						if (e.data && e.data.size > 0)
-							recordedChunksRef.current.push(e.data);
-					};
-					mediaRecorderRef.current.onstop = () => {
-						const blob = new Blob(recordedChunksRef.current, {
-							type: "video/webm",
-						});
-						if (recordingUrlRef.current)
-							URL.revokeObjectURL(recordingUrlRef.current);
-						recordingUrlRef.current = URL.createObjectURL(blob);
-					};
-				} catch (err) {
-					console.warn("MediaRecorder not available:", err);
-				}
+				// Prepare recording controller
+				recorderControllerRef.current = createMediaRecorderController(stream);
 			}
 		} catch (error) {
 			console.error("Failed to initialize camera:", error);
@@ -145,46 +120,25 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
 			await initializeCamera();
 		}
 		startSession();
-		if (
-			mediaRecorderRef.current &&
-			mediaRecorderRef.current.state === "inactive"
-		) {
-			recordedChunksRef.current = [];
-			mediaRecorderRef.current.start(1000);
-		}
+		recorderControllerRef.current?.start(1000);
 	};
 
 	const handleStop = async () => {
 		endSession();
-		if (
-			mediaRecorderRef.current &&
-			mediaRecorderRef.current.state !== "inactive"
-		) {
-			const stopped = new Promise<void>((resolve) => {
-				const rec = mediaRecorderRef.current!;
-				rec.onstop = () => {
-					const blob = new Blob(recordedChunksRef.current, {
-						type: "video/webm",
-					});
-					if (recordingUrlRef.current)
-						URL.revokeObjectURL(recordingUrlRef.current);
-					recordingUrlRef.current = URL.createObjectURL(blob);
-					resolve();
-				};
-				rec.stop();
-			});
-			await stopped;
-		}
+		const url = await recorderControllerRef.current?.stop();
 		if (streamRef.current) {
 			streamRef.current.getTracks().forEach((track) => track.stop());
 		}
 		setIsRecording(false);
 		if (onReportGenerated) {
 			const base = generateReport();
-			onReportGenerated({ ...base, recordingUrl: recordingUrlRef.current });
+			onReportGenerated({
+				...base,
+				recordingUrl: url || recorderControllerRef.current?.getUrl() || null,
+			});
 		}
 	};
-	console.log(detectionResult);
+	// console.log(detectionResult);
 
 	return (
 		<div className="space-y-6">
@@ -248,17 +202,6 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
 									muted
 									playsInline
 									className="w-full h-full object-cover"
-								/>
-								<canvas
-									ref={canvasRef}
-									className="absolute inset-0 pointer-events-none hidden"
-									style={{
-										mixBlendMode: "multiply",
-										background:
-											videoStats.currentFocusState !== "focused"
-												? "rgba(239, 68, 68, 0.1)"
-												: "transparent",
-									}}
 								/>
 
 								{/* Status Overlay */}

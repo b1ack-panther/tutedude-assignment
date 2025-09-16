@@ -4,6 +4,9 @@ import {
 	DetectionEvent,
 	ProctoringSession,
 	VideoStats,
+	EventType,
+	Severity,
+	FocusType,
 } from "@/types/proctoring";
 
 export const useProctoring = (candidateName: string) => {
@@ -20,7 +23,7 @@ export const useProctoring = (candidateName: string) => {
 		facesDetected: 0,
 		lastFaceDetection: null,
 		focusLostDuration: 0,
-		currentFocusState: "focused",
+		currentFocusState: FocusType.FOCUSED,
 	});
 
 	const [isRecording, setIsRecording] = useState(false);
@@ -36,7 +39,7 @@ export const useProctoring = (candidateName: string) => {
 			duration?: number
 		) => {
 			const event: DetectionEvent = {
-				id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+				id: `event_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
 				type,
 				timestamp: new Date(),
 				duration,
@@ -47,7 +50,11 @@ export const useProctoring = (candidateName: string) => {
 			setSession((prev) => {
 				const newEvents = [...prev.events, event];
 				const scoreDeduction =
-					severity === "high" ? 10 : severity === "medium" ? 5 : 2;
+					severity === Severity.HIGH
+						? 10
+						: severity === Severity.MEDIUM
+						? 5
+						: 2;
 				const newScore = Math.max(0, prev.integrityScore - scoreDeduction);
 
 				return {
@@ -68,7 +75,7 @@ export const useProctoring = (candidateName: string) => {
 
 		setVideoStats((prev) => ({
 			...prev,
-			currentFocusState: "looking_away",
+			currentFocusState: FocusType.LOOKING_AWAY,
 		}));
 	}, []);
 
@@ -78,8 +85,12 @@ export const useProctoring = (candidateName: string) => {
 
 			if (duration > DetectionConfig.focusThreshold) {
 				addEvent(
-					"focus_lost",
-					duration > 15 ? "high" : duration > 10 ? "medium" : "low",
+					EventType.FOCUS_LOST,
+					duration > 15
+						? Severity.HIGH
+						: duration > 10
+						? Severity.MEDIUM
+						: Severity.LOW,
 					`Focus lost for ${duration.toFixed(1)} seconds`,
 					duration
 				);
@@ -88,7 +99,7 @@ export const useProctoring = (candidateName: string) => {
 			focusLostStart.current = null;
 			setVideoStats((prev) => ({
 				...prev,
-				currentFocusState: "focused",
+				currentFocusState: FocusType.FOCUSED,
 				focusLostDuration: prev.focusLostDuration + duration,
 			}));
 		}
@@ -101,7 +112,7 @@ export const useProctoring = (candidateName: string) => {
 
 		setVideoStats((prev) => ({
 			...prev,
-			currentFocusState: "no_face",
+			currentFocusState: FocusType.NO_FACE,
 			facesDetected: 0,
 		}));
 	}, []);
@@ -115,10 +126,9 @@ export const useProctoring = (candidateName: string) => {
 
 				if (duration > DetectionConfig.faceAbsenceThreshold) {
 					addEvent(
-						"no_face",
-						duration > 30 ? "high" : "medium",
+						EventType.NO_FACE,
+						duration > 30 ? Severity.HIGH : Severity.MEDIUM,
 						`No face detected for ${duration.toFixed(1)} seconds`,
-
 						duration
 					);
 				}
@@ -128,8 +138,8 @@ export const useProctoring = (candidateName: string) => {
 
 			if (faceCount > 1) {
 				addEvent(
-					"multiple_faces",
-					"high",
+					EventType.MULTIPLE_FACES,
+					Severity.HIGH,
 					`Multiple faces detected (${faceCount} faces)`
 				);
 			}
@@ -138,7 +148,7 @@ export const useProctoring = (candidateName: string) => {
 				...prev,
 				facesDetected: faceCount,
 				lastFaceDetection: now,
-				currentFocusState: "focused",
+				currentFocusState: FocusType.FOCUSED,
 			}));
 
 			// If focus was lost, regain it
@@ -152,12 +162,16 @@ export const useProctoring = (candidateName: string) => {
 	const handleObjectDetected = useCallback(
 		(objectType: string) => {
 			const eventType = objectType.includes("phone")
-				? "phone_detected"
+				? EventType.PHONE_DETECTED
 				: objectType.includes("book") || objectType.includes("paper")
-				? "book_detected"
-				: "other";
+				? EventType.BOOK_DETECTED
+				: EventType.OTHER;
 
-			addEvent(eventType, "high", `Suspicious object detected: ${objectType}`);
+			addEvent(
+				eventType,
+				Severity.HIGH,
+				`Suspicious object detected: ${objectType}`
+			);
 		},
 		[addEvent]
 	);
@@ -178,8 +192,8 @@ export const useProctoring = (candidateName: string) => {
 			const duration = (Date.now() - noFaceStart.current.getTime()) / 1000;
 			if (duration > DetectionConfig.faceAbsenceThreshold) {
 				addEvent(
-					"no_face",
-					duration > 30 ? "high" : "medium",
+					EventType.NO_FACE,
+					duration > 30 ? Severity.HIGH : Severity.MEDIUM,
 					`No face detected for ${duration.toFixed(1)} seconds`,
 					duration
 				);
@@ -201,14 +215,14 @@ export const useProctoring = (candidateName: string) => {
 			: (Date.now() - session.startTime.getTime()) / 1000 / 60;
 
 		const focusLostEvents = session.events.filter(
-			(e) => e.type === "focus_lost"
+			(e) => e.type === EventType.FOCUS_LOST
 		);
 		const suspiciousEvents = session.events.filter((e) =>
 			[
-				"phone_detected",
-				"book_detected",
-				"device_detected",
-				"multiple_faces",
+				EventType.PHONE_DETECTED,
+				EventType.BOOK_DETECTED,
+				EventType.DEVICE_DETECTED,
+				EventType.MULTIPLE_FACES,
 			].includes(e.type)
 		);
 
@@ -238,11 +252,11 @@ export const useProctoring = (candidateName: string) => {
 
 	const getFocusStatusColor = () => {
 		switch (videoStats.currentFocusState) {
-			case "focused":
+			case FocusType.FOCUSED:
 				return "success";
-			case "looking_away":
+			case FocusType.LOOKING_AWAY:
 				return "warning";
-			case "no_face":
+			case FocusType.NO_FACE:
 				return "destructive";
 			default:
 				return "secondary";
@@ -251,11 +265,11 @@ export const useProctoring = (candidateName: string) => {
 
 	const getFocusStatusText = () => {
 		switch (videoStats.currentFocusState) {
-			case "focused":
+			case FocusType.FOCUSED:
 				return "Focused";
-			case "looking_away":
+			case FocusType.LOOKING_AWAY:
 				return "Looking Away";
-			case "no_face":
+			case FocusType.NO_FACE:
 				return "No Face Detected";
 			default:
 				return "Unknown";

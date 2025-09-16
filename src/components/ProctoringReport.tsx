@@ -13,6 +13,7 @@ import {
 	Book,
 	Users,
 } from "lucide-react";
+import { EventType } from "@/types/proctoring";
 
 interface ProctoringReportProps {
 	reportData: any;
@@ -38,19 +39,19 @@ export const ProctoringReport: React.FC<ProctoringReportProps> = ({
 		return "Poor";
 	};
 
-	const getEventIcon = (type: string) => {
+	const getEventIcon = (type: EventType) => {
 		switch (type) {
-			case "focus_lost":
+			case EventType.FOCUS_LOST:
 				return <Eye className="w-4 h-4" />;
-			case "no_face":
+			case EventType.NO_FACE:
 				return <Eye className="w-4 h-4" />;
-			case "multiple_faces":
+			case EventType.MULTIPLE_FACES:
 				return <Users className="w-4 h-4" />;
-			case "phone_detected":
+			case EventType.PHONE_DETECTED:
 				return <Smartphone className="w-4 h-4" />;
-			case "book_detected":
+			case EventType.BOOK_DETECTED:
 				return <Book className="w-4 h-4" />;
-			case "device_detected":
+			case EventType.DEVICE_DETECTED:
 				return <AlertTriangle className="w-4 h-4" />;
 			default:
 				return <AlertTriangle className="w-4 h-4" />;
