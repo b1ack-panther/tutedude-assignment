@@ -9,6 +9,7 @@ interface DetectionResult {
 	isLookingAway: boolean;
 	objects: string[];
 	lastDetectionTime: number;
+	isModelsLoading: boolean;
 }
 
 export function useDetection(
@@ -26,6 +27,7 @@ export function useDetection(
 		isLookingAway: false,
 		objects: [],
 		lastDetectionTime: 0,
+		isModelsLoading: true,
 	});
 
 	// load models once
@@ -53,6 +55,8 @@ export function useDetection(
 				objectModelRef.current = await cocoSsd.load();
 			} catch (err: any) {
 				console.error("Model loading failed:", err.message);
+			} finally {
+				setResult((prev) => ({ ...prev, isModelsLoading: false }));
 			}
 		};
 
@@ -62,6 +66,8 @@ export function useDetection(
 	// detection loop with setInterval
 	useEffect(() => {
 		if (!isActive) return;
+		if (result.isModelsLoading) return;
+		if (!faceModelRef.current) return;
 
 		const intervalId = setInterval(async () => {
 			const videoEl = videoRef.current;
@@ -126,19 +132,20 @@ export function useDetection(
 					}
 				}
 
-				setResult({
+				setResult((prev) => ({
+					...prev,
 					facesDetected: facesCount,
 					isLookingAway: lookingAway,
 					objects,
 					lastDetectionTime: Date.now(),
-				});
+				}));
 			} catch (err: any) {
 				console.error("Detection failed:", err.message);
 			}
 		}, 100); // runs every 100ms (~10fps)
 
 		return () => clearInterval(intervalId);
-	}, [isActive, videoRef]);
+	}, [isActive, videoRef, result.isModelsLoading]);
 
 	return result;
 }

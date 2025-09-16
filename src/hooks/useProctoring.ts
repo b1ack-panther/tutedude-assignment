@@ -168,13 +168,32 @@ export const useProctoring = (candidateName: string) => {
 	}, []);
 
 	const endSession = useCallback(() => {
+		// Flush any ongoing focus lost segment
+		if (focusLostStart.current) {
+			handleFocusRegained();
+		}
+
+		// Flush any ongoing no-face segment
+		if (noFaceStart.current) {
+			const duration = (Date.now() - noFaceStart.current.getTime()) / 1000;
+			if (duration > DetectionConfig.faceAbsenceThreshold) {
+				addEvent(
+					"no_face",
+					duration > 30 ? "high" : "medium",
+					`No face detected for ${duration.toFixed(1)} seconds`,
+					duration
+				);
+			}
+			noFaceStart.current = null;
+		}
+
 		setIsRecording(false);
 		setSession((prev) => ({
 			...prev,
 			endTime: new Date(),
 		}));
 		setVideoStats((prev) => ({ ...prev, isVideoActive: false }));
-	}, []);
+	}, [addEvent, handleFocusRegained]);
 
 	const generateReport = useCallback(() => {
 		const duration = session.endTime

@@ -23,8 +23,8 @@ export interface ProctoringSession {
 }
 
 export const DetectionConfig = {
-	focusThreshold: 5,
-	faceAbsenceThreshold: 10,
+	focusThreshold: 2,
+	faceAbsenceThreshold: 5,
 };
 
 export interface VideoStats {
