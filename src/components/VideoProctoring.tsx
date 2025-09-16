@@ -40,7 +40,7 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
   } = useProctoring(candidateName);
 
   // Initialize camera
-  const initializeCamera = useCallback(async () => {
+  const initializeCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -61,7 +61,7 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
       console.error('Failed to initialize camera:', error);
       setPermissionDenied(true);
     }
-  }, []);
+  }
 
   // Mock face detection (in real implementation, use MediaPipe/TensorFlow.js)
   const detectFaces = useCallback(() => {
@@ -107,8 +107,8 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
 
   // Animation loop
   const animate = useCallback(() => {
-    detectFaces();
     animationRef.current = requestAnimationFrame(animate);
+    detectFaces();
   }, [detectFaces]);
 
   useEffect(() => {
@@ -146,9 +146,14 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
 
   const handleStop = () => {
     endSession();
-    if (onReportGenerated) {
-      onReportGenerated(generateReport());
-    }
+    if (streamRef.current) {
+      console.log(streamRef.current.getTracks())
+			streamRef.current.getTracks().forEach((track) => track.stop());
+		}
+    setIsInitialized(false);
+    // if (onReportGenerated) {
+    //   onReportGenerated(generateReport());
+    // }
   };
 
   const getFocusStatusColor = () => {
@@ -172,7 +177,7 @@ export const VideoProctoring: React.FC<VideoProctoringProps> = ({
   return (
     <div className="space-y-6">
       {/* Main Video Interface */}
-      <Card className="p-6 bg-gradient-to-br from-card to-card/50 shadow-elegant">
+      <Card className="p-6 bg-gradient-to-br from-card to-card/50">
         <div className="space-y-4">
           {/* Header */}
           <div className="flex items-center justify-between">

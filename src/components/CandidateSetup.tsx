@@ -30,7 +30,7 @@ export const CandidateSetup: React.FC<CandidateSetupProps> = ({ onStart }) => {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       stream.getTracks().forEach(track => track.stop());
       setCameraTest('success');
-    } catch (error) {
+    } catch {
       setCameraTest('failed');
     }
   };
