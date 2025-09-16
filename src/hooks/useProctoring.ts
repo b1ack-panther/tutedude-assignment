@@ -217,6 +217,32 @@ export const useProctoring = (candidateName: string) => {
 		};
 	}, [session, videoStats.focusLostDuration]);
 
+	const getFocusStatusColor = () => {
+		switch (videoStats.currentFocusState) {
+			case "focused":
+				return "success";
+			case "looking_away":
+				return "warning";
+			case "no_face":
+				return "destructive";
+			default:
+				return "secondary";
+		}
+	};
+
+	const getFocusStatusText = () => {
+		switch (videoStats.currentFocusState) {
+			case "focused":
+				return "Focused";
+			case "looking_away":
+				return "Looking Away";
+			case "no_face":
+				return "No Face Detected";
+			default:
+				return "Unknown";
+		}
+	};
+
 	return {
 		session,
 		videoStats,
@@ -230,5 +256,8 @@ export const useProctoring = (candidateName: string) => {
 		handleObjectDetected,
 		generateReport,
 		addEvent,
+		setIsRecording,
+		getFocusStatusColor,
+		getFocusStatusText,
 	};
 };

@@ -1,321 +1,316 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useProctoring } from '@/hooks/useProctoring';
-import { DetectionEvent } from '@/types/proctoring';
-import { Camera, CameraOff, Eye, EyeOff, AlertTriangle, CheckCircle } from 'lucide-react';
+import React, { useRef, useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useProctoring } from "@/hooks/useProctoring";
+import { DetectionEvent } from "@/types/proctoring";
+import { Camera, CameraOff, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { useDetection } from "@/hooks/use-detection";
 
 interface VideoProctoringProps {
-  candidateName: string;
-  onReportGenerated?: (report: any) => void;
+	candidateName: string;
+	onReportGenerated?: (report: any) => void;
 }
 
-export const VideoProctoring: React.FC<VideoProctoringProps> = ({ 
-  candidateName, 
-  onReportGenerated 
+export const VideoProctoring: React.FC<VideoProctoringProps> = ({
+	candidateName,
+	onReportGenerated,
 }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animationRef = useRef<number>();
+	const videoRef = useRef<HTMLVideoElement>(null);
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const streamRef = useRef<MediaStream | null>(null);
+
+	const [recentAlert, setRecentAlert] = useState<DetectionEvent | null>(null);
+	const [permissionDenied, setPermissionDenied] = useState(false);
+
+	const {
+		session,
+		videoStats,
+		isRecording,
+		startSession,
+		endSession,
+		handleFaceDetected,
+		handleNoFace,
+		handleFocusLost,
+		handleObjectDetected,
+		generateReport,
+		setIsRecording,
+		getFocusStatusColor,
+		getFocusStatusText,
+		handleFocusRegained,
+	} = useProctoring(candidateName);
+
+	// Initialize camera
+	const initializeCamera = async () => {
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				video: {
+					width: 640,
+					height: 480,
+					facingMode: "user",
+				},
+				audio: false,
+			});
+
+			if (videoRef.current) {
+				videoRef.current.srcObject = stream;
+				streamRef.current = stream;
+				setIsRecording(true);
+				setPermissionDenied(false);
+			}
+		} catch (error) {
+			console.error("Failed to initialize camera:", error);
+			setIsRecording(false);
+			setPermissionDenied(true);
+		}
+	};
+
+	const detectionResult = useDetection(videoRef, isRecording);
+	const { facesDetected, isLookingAway, objects } = detectionResult;
+
+	useEffect(() => {
+		if (facesDetected === 0) {
+			handleNoFace();
+		} else {
+			handleFaceDetected(facesDetected);
+		}
+
+		if (isLookingAway) {
+			handleFocusLost();
+		} else {
+			handleFocusRegained();
+		}
+
+		if (objects.length > 0) {
+			objects.forEach((obj) => handleObjectDetected(obj));
+		}
+	}, [
+		facesDetected,
+		isLookingAway,
+		objects,
+		handleFaceDetected,
+		handleNoFace,
+		handleFocusLost,
+		handleFocusRegained,
+		handleObjectDetected,
+  ]);
   
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [recentAlert, setRecentAlert] = useState<DetectionEvent | null>(null);
-  const [permissionDenied, setPermissionDenied] = useState(false);
 
-  const {
-    session,
-    videoStats,
-    isRecording,
-    startSession,
-    endSession,
-    handleFaceDetected,
-    handleNoFace,
-    handleFocusLost,
-    handleFocusRegained,
-    handleObjectDetected,
-    generateReport,
-  } = useProctoring(candidateName);
+	useEffect(() => {
+		if (session.events.length > 0) {
+			const latestEvent = session.events[session.events.length - 1];
+			setRecentAlert(latestEvent);
 
-  // Initialize camera
-  const initializeCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: 640, 
-          height: 480,
-          facingMode: 'user'
-        },
-        audio: false
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsInitialized(true);
-        setPermissionDenied(false);
-      }
-    } catch (error) {
-      console.error('Failed to initialize camera:', error);
-      setPermissionDenied(true);
-    }
-  }
+			const timer = setTimeout(() => setRecentAlert(null), 5000);
+			return () => clearTimeout(timer);
+		}
+	}, [session.events]);
 
-  // Mock face detection (in real implementation, use MediaPipe/TensorFlow.js)
-  const detectFaces = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !isRecording) return;
-    
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx || video.videoWidth === 0) return;
+	const handleStart = async () => {
+		if (!isRecording) {
+			await initializeCamera();
+		}
+		startSession();
+	};
 
-    // Set canvas size to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    // Draw video frame
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Mock detection logic (replace with actual AI detection)
-    const mockDetection = Math.random();
-    
-    if (mockDetection < 0.1) {
-      // 10% chance of no face
-      handleNoFace();
-    } else if (mockDetection < 0.15) {
-      // 5% chance of multiple faces
-      handleFaceDetected(2);
-    } else if (mockDetection < 0.25) {
-      // 10% chance of looking away
-      handleFocusLost();
-    } else {
-      // Normal detection
-      handleFaceDetected(1);
-    }
-
-    // Mock object detection
-    if (Math.random() < 0.02) { // 2% chance
-      const objects = ['phone', 'book', 'tablet'];
-      const detected = objects[Math.floor(Math.random() * objects.length)];
-      handleObjectDetected(detected);
-    }
-  }, [isRecording, handleFaceDetected, handleNoFace, handleFocusLost, handleObjectDetected]);
-
-  // Animation loop
-  const animate = useCallback(() => {
-    animationRef.current = requestAnimationFrame(animate);
-    detectFaces();
-  }, [detectFaces]);
-
-  useEffect(() => {
-    if (isRecording && isInitialized) {
-      animate();
-    } else if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-    
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [isRecording, isInitialized, animate]);
-
-  // Show recent alerts
-  useEffect(() => {
-    if (session.events.length > 0) {
-      const latestEvent = session.events[session.events.length - 1];
-      setRecentAlert(latestEvent);
-      
-      // Clear alert after 5 seconds
-      const timer = setTimeout(() => setRecentAlert(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [session.events]);
-
-  const handleStart = async () => {
-    if (!isInitialized) {
-      await initializeCamera();
-    }
-    startSession();
-  };
-
-  const handleStop = () => {
-    endSession();
-    if (streamRef.current) {
-      console.log(streamRef.current.getTracks())
+	const handleStop = () => {
+		endSession();
+		if (streamRef.current) {
 			streamRef.current.getTracks().forEach((track) => track.stop());
 		}
-    setIsInitialized(false);
-    // if (onReportGenerated) {
-    //   onReportGenerated(generateReport());
-    // }
+		setIsRecording(false);
+		if (onReportGenerated) {
+			onReportGenerated(generateReport());
+		}
   };
+  console.log(detectionResult)
 
-  const getFocusStatusColor = () => {
-    switch (videoStats.currentFocusState) {
-      case 'focused': return 'success';
-      case 'looking_away': return 'warning';
-      case 'no_face': return 'destructive';
-      default: return 'secondary';
-    }
-  };
+	return (
+		<div className="space-y-6">
+			{/* Main Video Interface */}
+			<Card className="p-6 bg-gradient-to-br from-card to-card/50 max-w-3xl mx-auto">
+				<div className="space-y-4">
+					{/* Header */}
+					<div className="flex items-center justify-between">
+						<div>
+							<h2 className="text-2xl font-bold text-foreground">
+								Interview Session
+							</h2>
+							<p className="text-muted-foreground">
+								Candidate: {candidateName}
+							</p>
+						</div>
+						{isRecording && (
+							<div className="flex items-center gap-3">
+								<Badge
+									variant={getFocusStatusColor() as any}
+									className="px-3 py-1"
+								>
+									{videoStats.currentFocusState === "focused" ? (
+										<Eye className="w-4 h-4 mr-1" />
+									) : (
+										<EyeOff className="w-4 h-4 mr-1" />
+									)}
+									{getFocusStatusText()}
+								</Badge>
+								<Badge variant="outline" className="px-3 py-1">
+									Score: {session.integrityScore}%
+								</Badge>
+							</div>
+						)}
+					</div>
 
-  const getFocusStatusText = () => {
-    switch (videoStats.currentFocusState) {
-      case 'focused': return 'Focused';
-      case 'looking_away': return 'Looking Away';
-      case 'no_face': return 'No Face Detected';
-      default: return 'Unknown';
-    }
-  };
+					{/* Video Container */}
+					<div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+						{permissionDenied ? (
+							<div className="absolute inset-0 flex items-center justify-center bg-muted">
+								<div className="text-center space-y-4">
+									<CameraOff className="w-16 h-16 text-muted-foreground mx-auto" />
+									<div>
+										<p className="text-lg font-semibold">
+											Camera Access Denied
+										</p>
+										<p className="text-muted-foreground">
+											Please allow camera access to continue
+										</p>
+									</div>
+									<Button onClick={initializeCamera} variant="outline">
+										Retry Camera Access
+									</Button>
+								</div>
+							</div>
+						) : (
+							<>
+								<video
+									ref={videoRef}
+									autoPlay
+									muted
+									playsInline
+									className="w-full h-full object-cover"
+								/>
+								<canvas
+									ref={canvasRef}
+									className="absolute inset-0 pointer-events-none hidden"
+									style={{
+										mixBlendMode: "multiply",
+										background:
+											videoStats.currentFocusState !== "focused"
+												? "rgba(239, 68, 68, 0.1)"
+												: "transparent",
+									}}
+								/>
 
-  return (
-    <div className="space-y-6">
-      {/* Main Video Interface */}
-      <Card className="p-6 bg-gradient-to-br from-card to-card/50">
-        <div className="space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground">Interview Session</h2>
-              <p className="text-muted-foreground">Candidate: {candidateName}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant={getFocusStatusColor() as any} className="px-3 py-1">
-                {videoStats.currentFocusState === 'focused' ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
-                {getFocusStatusText()}
-              </Badge>
-              <Badge variant="outline" className="px-3 py-1">
-                Score: {session.integrityScore}%
-              </Badge>
-            </div>
-          </div>
+								{/* Status Overlay */}
+								<div className="absolute top-4 left-4 space-y-2">
+									{isRecording && (
+										<Badge variant="destructive" className="animate-pulse">
+											<div className="w-2 h-2 bg-white rounded-full mr-2" />
+											Recording
+										</Badge>
+									)}
+									{videoStats.facesDetected > 0 && (
+										<Badge variant="secondary">
+											{videoStats.facesDetected} Face
+											{videoStats.facesDetected > 1 ? "s" : ""}
+										</Badge>
+									)}
+								</div>
 
-          {/* Video Container */}
-          <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-            {permissionDenied ? (
-              <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                <div className="text-center space-y-4">
-                  <CameraOff className="w-16 h-16 text-muted-foreground mx-auto" />
-                  <div>
-                    <p className="text-lg font-semibold">Camera Access Denied</p>
-                    <p className="text-muted-foreground">Please allow camera access to continue</p>
-                  </div>
-                  <Button onClick={initializeCamera} variant="outline">
-                    Retry Camera Access
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-                <canvas
-                  ref={canvasRef}
-                  className="absolute inset-0 pointer-events-none opacity-30"
-                  style={{ 
-                    mixBlendMode: 'multiply',
-                    background: videoStats.currentFocusState !== 'focused' ? 'rgba(239, 68, 68, 0.1)' : 'transparent'
-                  }}
-                />
-                
-                {/* Status Overlay */}
-                <div className="absolute top-4 left-4 space-y-2">
-                  {isRecording && (
-                    <Badge variant="destructive" className="animate-pulse">
-                      <div className="w-2 h-2 bg-white rounded-full mr-2" />
-                      Recording
-                    </Badge>
-                  )}
-                  {videoStats.facesDetected > 0 && (
-                    <Badge variant="secondary">
-                      {videoStats.facesDetected} Face{videoStats.facesDetected > 1 ? 's' : ''}
-                    </Badge>
-                  )}
-                </div>
+								{/* Detection Info */}
+								<div className="absolute bottom-4 right-4 space-y-1">
+									<div className="text-sm text-white bg-black/50 px-3 py-1 rounded">
+										Events: {session.events.length}
+									</div>
+									{videoStats.lastFaceDetection && (
+										<div className="text-sm text-white bg-black/50 px-3 py-1 rounded">
+											Last Face:{" "}
+											{new Date(
+												videoStats.lastFaceDetection
+											).toLocaleTimeString()}
+										</div>
+									)}
+								</div>
+							</>
+						)}
+					</div>
 
-                {/* Detection Info */}
-                <div className="absolute bottom-4 right-4 space-y-1">
-                  <div className="text-sm text-white bg-black/50 px-3 py-1 rounded">
-                    Events: {session.events.length}
-                  </div>
-                  {videoStats.lastFaceDetection && (
-                    <div className="text-sm text-white bg-black/50 px-3 py-1 rounded">
-                      Last Face: {new Date(videoStats.lastFaceDetection).toLocaleTimeString()}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+					{/* Controls */}
+					<div className="flex items-center justify-center gap-4">
+						{!isRecording ? (
+							<Button
+								onClick={handleStart}
+								className="px-8 py-3 bg-gradient-to-r from-primary to-primary-glow"
+							>
+								<Camera className="w-5 h-5 mr-2" />
+								Start Proctoring
+							</Button>
+						) : (
+							<Button
+								onClick={handleStop}
+								variant="destructive"
+								className="px-8 py-3"
+							>
+								<CameraOff className="w-5 h-5 mr-2" />
+								Stop Session
+							</Button>
+						)}
+					</div>
+				</div>
+			</Card>
 
-          {/* Controls */}
-          <div className="flex items-center justify-center gap-4">
-            {!isRecording ? (
-              <Button onClick={handleStart} className="px-8 py-3 bg-gradient-to-r from-primary to-primary-glow">
-                <Camera className="w-5 h-5 mr-2" />
-                Start Proctoring
-              </Button>
-            ) : (
-              <Button onClick={handleStop} variant="destructive" className="px-8 py-3">
-                <CameraOff className="w-5 h-5 mr-2" />
-                Stop Session
-              </Button>
-            )}
-          </div>
-        </div>
-      </Card>
+			{/* Real-time Alert */}
+			{recentAlert && (
+				<Alert
+					className={`border-l-4 ${
+						recentAlert.severity === "high"
+							? "border-destructive bg-alert-bg"
+							: recentAlert.severity === "medium"
+							? "border-warning bg-warning/10"
+							: "border-primary bg-success-bg"
+					}`}
+				>
+					<AlertTriangle className="h-4 w-4" />
+					<AlertDescription className="font-medium">
+						<span className="capitalize">
+							{recentAlert.type.replace("_", " ")}
+						</span>
+						: {recentAlert.description}
+						<span className="text-muted-foreground ml-2">
+							{recentAlert.timestamp.toLocaleTimeString()}
+						</span>
+					</AlertDescription>
+				</Alert>
+			)}
 
-      {/* Real-time Alert */}
-      {recentAlert && (
-        <Alert className={`border-l-4 ${
-          recentAlert.severity === 'high' ? 'border-destructive bg-alert-bg' :
-          recentAlert.severity === 'medium' ? 'border-warning bg-warning/10' :
-          'border-primary bg-success-bg'
-        }`}>
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription className="font-medium">
-            <span className="capitalize">{recentAlert.type.replace('_', ' ')}</span>: {recentAlert.description}
-            <span className="text-muted-foreground ml-2">
-              {recentAlert.timestamp.toLocaleTimeString()}
-            </span>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Live Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-primary">{session.integrityScore}%</div>
-          <div className="text-sm text-muted-foreground">Integrity Score</div>
-        </Card>
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-foreground">{session.events.length}</div>
-          <div className="text-sm text-muted-foreground">Total Events</div>
-        </Card>
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-foreground">
-            {Math.floor(videoStats.focusLostDuration)}s
-          </div>
-          <div className="text-sm text-muted-foreground">Focus Lost</div>
-        </Card>
-        <Card className="p-4 text-center">
-          <div className="text-2xl font-bold text-foreground">
-            {Math.floor((Date.now() - session.startTime.getTime()) / 1000 / 60)}m
-          </div>
-          <div className="text-sm text-muted-foreground">Session Time</div>
-        </Card>
-      </div>
-    </div>
-  );
+			{/* Live Stats */}
+			<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+				<Card className="p-4 text-center">
+					<div className="text-2xl font-bold text-primary">
+						{session.integrityScore}%
+					</div>
+					<div className="text-sm text-muted-foreground">Integrity Score</div>
+				</Card>
+				<Card className="p-4 text-center">
+					<div className="text-2xl font-bold text-foreground">
+						{session.events.length}
+					</div>
+					<div className="text-sm text-muted-foreground">Total Events</div>
+				</Card>
+				<Card className="p-4 text-center">
+					<div className="text-2xl font-bold text-foreground">
+						{Math.floor(videoStats.focusLostDuration)}s
+					</div>
+					<div className="text-sm text-muted-foreground">Focus Lost</div>
+				</Card>
+				<Card className="p-4 text-center">
+					<div className="text-2xl font-bold text-foreground">
+						{Math.floor((Date.now() - session.startTime.getTime()) / 1000 / 60)}
+						m
+					</div>
+					<div className="text-sm text-muted-foreground">Session Time</div>
+				</Card>
+			</div>
+		</div>
+	);
 };
